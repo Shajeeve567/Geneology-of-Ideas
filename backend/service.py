@@ -27,7 +27,7 @@ llama_llm = ChatOpenAI(
     base_url="https://openrouter.ai/api/v1",
 )
 
-ACTIVE_LLM = gemini_llm
+ACTIVE_LLM = llama_llm
 
 structured_llm = ACTIVE_LLM.with_structured_output(RoadmapResponse)
 

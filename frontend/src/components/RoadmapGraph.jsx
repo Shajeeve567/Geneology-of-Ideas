@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { handleDownloadImage } from '../utils/downloadImage'; // Ensure this path is correct
 import ReactFlow, { 
   Background, 
   Controls, 
   MiniMap,
   applyNodeChanges, 
-  applyEdgeChanges  
+  applyEdgeChanges,
+  Panel
 } from 'reactflow';
 import 'reactflow/dist/style.css'; 
 import dagre from 'dagre';
@@ -20,21 +22,22 @@ const nodeTypes = {
 };
 
 const getLayoutedElements = (nodes, edges) => {
-  // 1. Initialize Graph
-  // We enable 'multigraph' to prevent crashes if the AI generates duplicate edges
+
+  const expansionFactor = Math.floor(nodes.length / 5)
+  const baseRankSep = 150;
+  const baseNodeSep = 100;
+
   const dagreGraph = new dagre.graphlib.Graph({ multigraph: true });
   dagreGraph.setGraph({ 
       rankdir: 'LR', 
-      ranksep: 150, // 2. HUGE GAP horizontally (was default ~50)
-      nodesep: 100  // 3. Bigger gap vertically
+      ranksep: baseRankSep + (expansionFactor * 30),
+      nodesep: baseNodeSep + (expansionFactor * 10)
     });
 
-  // 2. Add Nodes (Force IDs to string to be safe)
   nodes.forEach((node) => {
     dagreGraph.setNode(String(node.id), { width: nodeWidth, height: nodeHeight });
   });
 
-  // 3. Add Edges with Safety Checks
   const validNodeIds = new Set(nodes.map((n) => String(n.id)));
   const validEdges = [];
 
@@ -42,12 +45,8 @@ const getLayoutedElements = (nodes, edges) => {
     const source = String(edge.source);
     const target = String(edge.target);
 
-    // Check if both nodes exist
     if (validNodeIds.has(source) && validNodeIds.has(target)) {
-      // CRITICAL FIX: Pass '{}' as the third argument!
-      // This ensures Dagre has a place to write the 'points' data.
       dagreGraph.setEdge(source, target, {}); 
-      
       validEdges.push({
         ...edge,
         source: source,
@@ -58,20 +57,16 @@ const getLayoutedElements = (nodes, edges) => {
     }
   });
 
-  // 4. Calculate Layout
   dagre.layout(dagreGraph);
 
-  // 5. Apply positions back to nodes
   const layoutedNodes = nodes.map((node) => {
     const nodeId = String(node.id);
     const nodeWithPosition = dagreGraph.node(nodeId);
 
-    // Fallback if layout failed for this node
     if (!nodeWithPosition) {
       return { ...node, position: { x: 0, y: 0 } };
     }
 
-    // Shift anchor point (Dagre is center-based, ReactFlow is top-left)
     node.position = {
       x: nodeWithPosition.x - nodeWidth / 2,
       y: nodeWithPosition.y - nodeHeight / 2,
@@ -90,10 +85,8 @@ const RoadmapGraph = ({ data, concept }) => {
 
   const [ nodes, setNodes ] = useState([])
   const [ edges, setEdges ] = useState([])
-
   const [selectedNode, setSelectedNode] = useState(null)
-
-  const [edgeTooltip, setEdgeTooltip] = useState(null); // { x, y, label }
+  const [edgeTooltip, setEdgeTooltip] = useState(null); 
 
   const handleExpandNode = useCallback(async (nodeId, nodeLabel, nodeType) => {
     console.log(`Expanding ${nodeLabel} (${nodeType})...`);
@@ -110,16 +103,10 @@ const RoadmapGraph = ({ data, concept }) => {
         })
       })
 
-
       const newSubgraph = await response.json();
-
-      console.log("New Nodes: ", newSubgraph.nodes);
-      console.log("New Edges: ", newSubgraph.edges);
-      
 
       if (!newSubgraph.nodes || newSubgraph.nodes.length === 0) return;
 
-      // Format new nodes to match ReactFlow structure
       const newFlowNodes = newSubgraph.nodes.map(n => ({
         id: String(n.id),
         type: 'custom',
@@ -128,7 +115,7 @@ const RoadmapGraph = ({ data, concept }) => {
           type: n.type, 
           tag: n.tag,
           details: n.details,
-          onExpand: handleExpandNode // Pass function recursively
+          onExpand: handleExpandNode
         },
         position: { x: 0, y: 0 }
       }));
@@ -143,26 +130,19 @@ const RoadmapGraph = ({ data, concept }) => {
         interactionWidth: 20,
       }))
 
-// Update State & Re-Layout
       setNodes((nds) => {
         const allNodes = [...nds, ...newFlowNodes];
-        const currentEdges = edges; // Access current edges via closure or ref if needed
-        // Note: For perfect layout, we usually need the latest edges here too.
-        // We will trigger layout in a separate effect or immediately here:
         return allNodes; 
       });
 
       setEdges((eds) => {
         const allEdges = [...eds, ...newFlowEdges];
         
-        // RE-LAYOUT everything
-        // We use the functional update of setNodes to ensure we have latest nodes
         setNodes(prevNodes => {
            const { nodes: reLayoutedNodes } = getLayoutedElements([...prevNodes], allEdges);
            return reLayoutedNodes;
         });
         
-        const { edges: reLayoutedEdges } = getLayoutedElements(nodes, allEdges); // Dummy call just to get edges if needed
         return allEdges; 
       });
 
@@ -181,14 +161,12 @@ const RoadmapGraph = ({ data, concept }) => {
     [],
   );
   const onNodeClick = useCallback((event, node) => {
-    // console.log([...data['nodes'].map((d) => d.id == node['id']? node: node)], " <-here")
     setSelectedNode({
         label: node.data.label,
-        details: node.data.details, // This was missing because we looked in the wrong place
+        details: node.data.details,
         type: node.data.type,
         tag: node.data.tag
     });
-    console.log(selectedNode)
   }, [data])
 
   const handleCloseModal = () => {
@@ -218,24 +196,22 @@ const RoadmapGraph = ({ data, concept }) => {
 
     const initialNodes = data.nodes.map((n) => ({
           id: String(n.id),
-          type: 'custom', // 👈 IMPORTANT: This activates CustomNode.jsx
+          type: 'custom',
           data: { 
             label: n.label,
-            type: n.type,   // 👈 Pass 'root', 'core', or 'path' for colors
+            type: n.type,
             tag: n.tag,
             details: n.details,
-            onExpand: handleExpandNode // 👈 Pass the function so the button works!
+            onExpand: handleExpandNode,
+            isMain: true
           },
           position: { x: 0, y: 0 },
-          // Note: We removed the 'style' object here because CustomNode.jsx 
-          // handles its own styling (colors, borders) based on the type.
     }));
 
     const initialEdges = data.edges.map((e) => ({
       id: `${e.source}-${e.target}`,
       source: String(e.source),
       target: String(e.target),
-      // label: String(e.label),
       data: {
         label: e.label
       },
@@ -255,13 +231,11 @@ const RoadmapGraph = ({ data, concept }) => {
 
   return (
     <>
-    <div style={{ width: '100%', height: '100%', border: '1px solid #e0e0e0', borderRadius: '8px' }}>
+    <div style={{ width: '100%', height: '100%', border: '1px solid #e0e0e0', borderRadius: '8px', position: 'relative' }}>
       {selectedNode && (
           <Modal handleCloseModal={handleCloseModal}>
-              {console.log("Node pressed!")}
               <div className="modal-header">
                   <h3 className="modal-title">{selectedNode.label}</h3>
-                  {console.log(selectedNode)}
                   <button onClick={handleCloseModal} className="modal-close-btn">&times;</button>
               </div>
               <div style={{ lineHeight: '1.6', color: '#555' }}>
@@ -269,6 +243,7 @@ const RoadmapGraph = ({ data, concept }) => {
               </div>
           </Modal>
       )}
+      
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -293,21 +268,40 @@ const RoadmapGraph = ({ data, concept }) => {
         <Background color="#aaa" gap={20} size={1} />
         <Controls />
         <MiniMap nodeColor="#e2e2e2" maskColor="rgba(240, 240, 240, 0.6)" />
+
+        {/* 👇 Button inside Panel for perfect positioning */}
+        <Panel position="bottom-right">
+          <button 
+            onClick={() => handleDownloadImage(nodes)} // 👈 PASSING NODES HERE
+            style={{
+              padding: '8px 16px',
+              background: '#333',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            📷 Export PNG
+          </button>
+        </Panel>
+
       </ReactFlow>
-      {/* 👇 RENDER THE TOOLTIP OVERLAY */}
+
       {edgeTooltip && (
         <div style={{
           position: 'fixed',
-          top: edgeTooltip.y - 45, // Position above cursor
+          top: edgeTooltip.y - 45,
           left: edgeTooltip.x,
-          transform: 'translateX(-50%)', // Center horizontally over cursor
+          transform: 'translateX(-50%)',
           zIndex: 100,
-          pointerEvents: 'none', // Lets clicks pass through to the graph
+          pointerEvents: 'none',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center'
         }}>
-           {/* 1. The Main White Box */}
            <div style={{
              backgroundColor: 'white',
              color: '#333',
@@ -320,16 +314,13 @@ const RoadmapGraph = ({ data, concept }) => {
            }}>
              {edgeTooltip.label}
            </div>
-
-           {/* 2. The Down Arrow (CSS Triangle) */}
            <div style={{
               width: 0, 
               height: 0, 
-              // This creates a triangle pointing down
               borderLeft: '8px solid transparent',
               borderRight: '8px solid transparent',
-              borderTop: '8px solid white', // Must match the box color
-              marginTop: '-1px' // Slight overlap to prevent tiny gaps
+              borderTop: '8px solid white',
+              marginTop: '-1px'
            }}></div>
         </div>
       )}
