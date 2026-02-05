@@ -70,7 +70,7 @@ const RoadmapPage = () => {
           onClick={() => navigate('/')} 
           style={{ margin: 0, fontSize: '1.2rem', color: '#333', cursor: 'pointer' }}
         >
-          Genealogy of Ideas 🧬
+          Knowledge Engine ✍️
         </h1>
         
         <div style={{ display: 'flex', gap: '10px' }}>

@@ -31,7 +31,7 @@ const Home = () => {
       backgroundColor: '#f8f9fa' 
     }}>
       <div style={{ textAlign: 'center', maxWidth: '600px', padding: '20px' }}>
-        <h1 style={{ fontSize: '2.5rem', marginBottom: '20px', color: '#333' }}>Genealogy of Ideas 🧬</h1>
+        <h1 style={{ fontSize: '2.5rem', marginBottom: '20px', color: '#333' }}>Knowledge Engine ✍️</h1>
         <p style={{ color: '#666', marginBottom: '30px' }}>Discover the origins and evolution of any concept.</p>
 
         {/* SEARCH BAR */}
